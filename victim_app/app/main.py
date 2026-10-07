@@ -103,3 +103,16 @@ def memory_failure():
         "message": "Memory pressure simulation completed",
         "allocated_mb": len(chunks),
     }
+
+@app.get("/failure/deployment")
+def deployment_failure():
+    logger.error("ERROR deployment introduced invalid application configuration")
+    logger.error("ERROR payment service configuration is invalid")
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "message": "Application failure caused by bad deployment",
+        },
+    )
