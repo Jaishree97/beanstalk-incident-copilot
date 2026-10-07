@@ -60,3 +60,15 @@ def server_failure():
             "message": "Internal application error",
         },
     )
+
+@app.get("/failure/latency")
+def latency_failure():
+    logger.warning("WARNING downstream payment service is slow")
+    logger.warning("WARNING request latency is increasing")
+
+    time.sleep(8)
+
+    return {
+        "status": "degraded",
+        "message": "Request completed with high latency",
+    }
