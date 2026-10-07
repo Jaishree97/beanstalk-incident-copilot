@@ -47,3 +47,16 @@ def database_failure():
             "message": "Database connection failed",
         },
     )
+
+@app.get("/failure/500")
+def server_failure():
+    logger.error("ERROR unexpected application exception")
+    logger.error("ERROR payment service returned invalid response")
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "message": "Internal application error",
+        },
+    )
