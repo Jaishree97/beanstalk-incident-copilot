@@ -72,3 +72,18 @@ def latency_failure():
         "status": "degraded",
         "message": "Request completed with high latency",
     }
+
+@app.get("/failure/cpu")
+def cpu_failure():
+    logger.warning("WARNING CPU pressure simulation started")
+
+    end_time = time.time() + 5
+    while time.time() < end_time:
+        _ = sum(i * i for i in range(10000))
+
+    logger.warning("WARNING CPU pressure simulation completed")
+
+    return {
+        "status": "degraded",
+        "message": "CPU pressure simulation completed",
+    }
