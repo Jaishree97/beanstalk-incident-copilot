@@ -87,3 +87,19 @@ def cpu_failure():
         "status": "degraded",
         "message": "CPU pressure simulation completed",
     }
+
+@app.get("/failure/memory")
+def memory_failure():
+    logger.warning("WARNING memory pressure simulation started")
+
+    chunks = []
+    for _ in range(25):
+        chunks.append(bytearray(1024 * 1024))
+
+    logger.warning("WARNING memory pressure simulation completed")
+
+    return {
+        "status": "degraded",
+        "message": "Memory pressure simulation completed",
+        "allocated_mb": len(chunks),
+    }
