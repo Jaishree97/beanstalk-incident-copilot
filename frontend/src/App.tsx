@@ -915,6 +915,206 @@ function EnvironmentsPage({
   incidents: Incident[]
   onOpenIncident: (incident: Incident) => void
 }) {
+  type Environment = {
+    key: string
+    name: string
+    environment_name: string
+    alarm_name: string
+    status: string
+    health: string
+    region: string
+    platform: string | null
+    version: string | null
+    url: string | null
+    environment_id?: string
+    alarm_state: string
+  }
+
+  const [environments, setEnvironments] = useState<Environment[]>([])
+  const [selectedEnvironment, setSelectedEnvironment] =
+    useState<Environment | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadEnvironments() {
+      try {
+        const response = await fetch('/api/environments')
+
+        if (!response.ok) {
+          throw new Error('Unable to load environments')
+        }
+
+        const data = await response.json()
+        setEnvironments(data.environments ?? [])
+      } catch {
+        setEnvironments([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadEnvironments()
+  }, [])
+
+  function healthStyle(health: string) {
+    switch (health.toLowerCase()) {
+      case 'green':
+        return {
+          badge:
+            'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+          dot: 'bg-emerald-500',
+        }
+      case 'yellow':
+        return {
+          badge:
+            'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
+          dot: 'bg-amber-500',
+        }
+      case 'red':
+        return {
+          badge:
+            'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400',
+          dot: 'bg-red-500',
+        }
+      default:
+        return {
+          badge:
+            'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+          dot: 'bg-slate-400',
+        }
+    }
+  }
+
+  if (selectedEnvironment) {
+    const style = healthStyle(selectedEnvironment.health)
+    const environmentIncidents = incidents.filter(
+      (incident) =>
+        incident.environment === selectedEnvironment.environment_name,
+    )
+
+    return (
+      <>
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setSelectedEnvironment(null)}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to environments
+          </button>
+        </div>
+
+        <div className="mb-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
+            Environment Details
+          </p>
+
+          <div className="mt-2 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight text-slate-950 dark:text-white">
+                {selectedEnvironment.name}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {selectedEnvironment.environment_name}
+              </p>
+            </div>
+
+            <span
+              className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${style.badge}`}
+            >
+              <span className={`h-2 w-2 rounded-full ${style.dot}`} />
+              {selectedEnvironment.health}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <InfoBlock
+            title="Environment status"
+            icon={<Server className="h-4 w-4 text-blue-600 dark:text-blue-400" />}
+          >
+            <TelemetryRow
+              label="Status"
+              value={selectedEnvironment.status}
+            />
+            <div className="mt-2">
+              <TelemetryRow
+                label="Health"
+                value={selectedEnvironment.health}
+              />
+            </div>
+          </InfoBlock>
+
+          <InfoBlock
+            title="Deployment"
+            icon={<Activity className="h-4 w-4 text-violet-600 dark:text-violet-400" />}
+          >
+            <TelemetryRow
+              label="Version"
+              value={selectedEnvironment.version ?? 'Unknown'}
+            />
+            <div className="mt-2">
+              <TelemetryRow
+                label="Platform"
+                value="Python 3.12 / AL2023"
+              />
+            </div>
+          </InfoBlock>
+
+          <InfoBlock
+            title="Monitoring"
+            icon={<ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+          >
+            <TelemetryRow
+              label="Alarm"
+              value={selectedEnvironment.alarm_name}
+            />
+            <div className="mt-2">
+              <TelemetryRow
+                label="Alarm state"
+                value={selectedEnvironment.alarm_state}
+              />
+            </div>
+          </InfoBlock>
+
+          <InfoBlock
+            title="AWS"
+            icon={<Database className="h-4 w-4 text-blue-600 dark:text-blue-400" />}
+          >
+            <TelemetryRow
+              label="Region"
+              value={selectedEnvironment.region}
+            />
+            <div className="mt-2">
+              <TelemetryRow
+                label="Environment ID"
+                value={selectedEnvironment.environment_id ?? 'Unknown'}
+              />
+            </div>
+          </InfoBlock>
+        </div>
+
+        <section className="mt-7">
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              Recent incidents
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Incidents detected in this environment. Select an incident to investigate.
+            </p>
+          </div>
+
+          <IncidentTable
+            incidents={environmentIncidents}
+            selected={null}
+            onSelect={onOpenIncident}
+          />
+        </section>
+      </>
+    )
+  }
+
   return (
     <>
       <div className="mb-7">
@@ -927,59 +1127,93 @@ function EnvironmentsPage({
         </h2>
 
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Production application environments monitored by Incident Copilot.
+          Live Elastic Beanstalk environments monitored by Incident Copilot.
         </p>
       </div>
 
-      <button
-        onClick={() =>
-          incidents[0] && onOpenIncident(incidents[0])
-        }
-        className="w-full rounded-xl border border-slate-200 bg-white p-6 text-left shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-800"
-      >
-        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
-          <div className="flex items-start gap-4">
-            <div className="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-950/30">
-              <Server className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-            </div>
-
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  victim-app-prod
-                </h3>
-
-                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
-                  Healthy
-                </span>
-              </div>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Elastic Beanstalk production environment
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <MetaPill
-                  icon={<Database />}
-                  text="us-east-1"
-                />
-
-                <MetaPill
-                  icon={<Activity />}
-                  text="CloudWatch monitored"
-                />
-
-                <MetaPill
-                  icon={<ShieldCheck />}
-                  text="Incident detection enabled"
-                />
-              </div>
-            </div>
-          </div>
-
-          <ChevronRight className="hidden h-5 w-5 text-slate-300 md:block dark:text-slate-600" />
+      {loading ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400 dark:border-slate-800 dark:bg-slate-950">
+          Loading AWS environments...
         </div>
-      </button>
+      ) : environments.length === 0 ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+          Unable to load environments from the Copilot API.
+        </div>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-2">
+          {environments.map((environment) => {
+            const style = healthStyle(environment.health)
+
+            return (
+              <button
+                key={environment.key}
+                type="button"
+                onClick={() => setSelectedEnvironment(environment)}
+                className="group rounded-xl border border-slate-200 bg-white p-6 text-left shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-800"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    <div className="rounded-xl bg-slate-100 p-3 dark:bg-slate-900">
+                      <Server className="h-6 w-6 text-slate-700 dark:text-slate-300" />
+                    </div>
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                          {environment.name}
+                        </h3>
+
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${style.badge}`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${style.dot}`}
+                          />
+                          {environment.health}
+                        </span>
+                      </div>
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        {environment.environment_name}
+                      </p>
+                    </div>
+                  </div>
+
+                  <ChevronRight className="h-5 w-5 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500 dark:text-slate-600" />
+                </div>
+
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <MetaPill
+                    icon={<Database />}
+                    text={environment.region}
+                  />
+                  <MetaPill
+                    icon={<Activity />}
+                    text={`Alarm ${environment.alarm_state}`}
+                  />
+                  <MetaPill
+                    icon={<ShieldCheck />}
+                    text="Incident detection enabled"
+                  />
+                  <MetaPill
+                    icon={<Server />}
+                    text={environment.status}
+                  />
+                </div>
+
+                <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
+                  <span className="text-[11px] text-slate-400">
+                    Click for environment details
+                  </span>
+                  <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                    View details →
+                  </span>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </>
   )
 }

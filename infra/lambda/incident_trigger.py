@@ -11,7 +11,7 @@ logger.setLevel(logging.INFO)
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-pro-v1:0")
-TABLE_NAME = "beanstalk-incidents"
+TABLE_NAME = os.environ.get("INCIDENT_TABLE_NAME", "beanstalk-incidents")
 
 logs = boto3.client("logs", region_name=REGION)
 bedrock = boto3.client("bedrock-runtime", region_name=REGION)
@@ -19,11 +19,47 @@ dynamodb = boto3.resource("dynamodb", region_name=REGION)
 table = dynamodb.Table(TABLE_NAME)
 
 
-def get_recent_logs():
-    log_group = "/aws/elasticbeanstalk/victim-app-prod/var/log/web.stdout.log"
+def get_environment_from_alarm(alarm_name):
+    """
+    Map the CloudWatch alarm to the Elastic Beanstalk environment.
+
+    Current alarms:
+      victim-app-5xx         -> victim-app-prod
+      victim-app-staging-5xx -> victim-app-staging
+    """
+
+    alarm_environment_map = {
+        "victim-app-5xx": "victim-app-prod",
+        "victim-app-staging-5xx": "victim-app-staging",
+    }
+
+    environment = alarm_environment_map.get(alarm_name)
+
+    if environment:
+        return environment
+
+    logger.warning(
+        "Unknown alarm name '%s'. Falling back to victim-app-prod.",
+        alarm_name,
+    )
+
+    return "victim-app-prod"
+
+
+def get_recent_logs(environment):
+    log_group = (
+        f"/aws/elasticbeanstalk/"
+        f"{environment}/var/log/web.stdout.log"
+    )
 
     start_time = int(
         (datetime.now(timezone.utc) - timedelta(minutes=5)).timestamp() * 1000
+    )
+
+    logger.info(
+        "Collecting logs from environment=%s log_group=%s",
+        environment,
+        log_group,
     )
 
     response = logs.filter_log_events(
@@ -119,7 +155,10 @@ def save_incident(event, evidence, diagnosis):
             ConditionExpression="attribute_not_exists(incident_id)",
         )
 
-        logger.info("INCIDENT_SAVED=%s", json.dumps(item, default=str))
+        logger.info(
+            "INCIDENT_SAVED=%s",
+            json.dumps(item, default=str),
+        )
 
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code")
@@ -141,12 +180,14 @@ def lambda_handler(event, context):
     alarm_name = detail.get("alarmName", "unknown")
     state = detail.get("state", {})
 
-    logs_data = get_recent_logs()
+    environment = get_environment_from_alarm(alarm_name)
+
+    logs_data = get_recent_logs(environment)
 
     evidence = {
         "alarm_name": alarm_name,
         "alarm_state": state,
-        "environment": "victim-app-prod",
+        "environment": environment,
         "region": REGION,
         "recent_logs": logs_data,
     }
@@ -172,5 +213,6 @@ def lambda_handler(event, context):
     return {
         "statusCode": 200,
         "incident_id": event.get("id"),
+        "environment": environment,
         "diagnosis": diagnosis,
     }

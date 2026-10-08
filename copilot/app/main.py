@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.services.bedrock import analyze_incident
+from app.routes.environments import router as environments_router
 
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
@@ -23,6 +24,8 @@ app = FastAPI(
     title="Beanstalk Incident Copilot",
     version="0.2.0",
 )
+
+app.include_router(environments_router)
 
 
 class IncidentRequest(BaseModel):
