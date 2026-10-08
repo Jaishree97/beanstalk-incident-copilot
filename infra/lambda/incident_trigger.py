@@ -4,23 +4,23 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-pro-v1:0")
+TABLE_NAME = "beanstalk-incidents"
 
-cloudwatch = boto3.client("cloudwatch", region_name=REGION)
 logs = boto3.client("logs", region_name=REGION)
 bedrock = boto3.client("bedrock-runtime", region_name=REGION)
+dynamodb = boto3.resource("dynamodb", region_name=REGION)
+table = dynamodb.Table(TABLE_NAME)
 
 
 def get_recent_logs():
-    log_group = (
-        "/aws/elasticbeanstalk/"
-        "victim-app-prod/var/log/web.stdout.log"
-    )
+    log_group = "/aws/elasticbeanstalk/victim-app-prod/var/log/web.stdout.log"
 
     start_time = int(
         (datetime.now(timezone.utc) - timedelta(minutes=5)).timestamp() * 1000
@@ -32,10 +32,7 @@ def get_recent_logs():
         limit=100,
     )
 
-    return [
-        event["message"]
-        for event in response.get("events", [])
-    ]
+    return [event["message"] for event in response.get("events", [])]
 
 
 def analyze_with_bedrock(evidence):
@@ -44,7 +41,7 @@ You are an incident-response copilot for an AWS Elastic Beanstalk application.
 
 Analyze the incident evidence below.
 
-Return ONLY valid JSON with exactly these fields:
+Return ONLY valid JSON with exactly:
 
 {{
   "severity": "critical|high|medium|low",
@@ -57,11 +54,11 @@ Return ONLY valid JSON with exactly these fields:
 }}
 
 Rules:
-- confidence must be an integer from 0 to 100.
-- Use only evidence provided below.
-- Do not invent facts.
-- If evidence is insufficient, say so.
-- Keep evidence and recommendations concise.
+- confidence must be an integer from 0 to 100
+- use only the evidence provided
+- do not invent facts
+- if evidence is insufficient, say so
+- keep the response concise
 
 Incident evidence:
 {json.dumps(evidence, default=str)}
@@ -72,9 +69,7 @@ Incident evidence:
         messages=[
             {
                 "role": "user",
-                "content": [
-                    {"text": prompt}
-                ],
+                "content": [{"text": prompt}],
             }
         ],
         inferenceConfig={
@@ -94,10 +89,55 @@ Incident evidence:
     return json.loads(text.strip())
 
 
+def save_incident(event, evidence, diagnosis):
+    incident_id = event.get("id")
+
+    if not incident_id:
+        incident_id = (
+            f"{evidence['alarm_name']}-"
+            f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        )
+
+    item = {
+        "incident_id": incident_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "environment": evidence["environment"],
+        "region": evidence["region"],
+        "alarm_name": evidence["alarm_name"],
+        "severity": diagnosis.get("severity", "unknown"),
+        "root_cause": diagnosis.get("root_cause", ""),
+        "confidence": diagnosis.get("confidence", 0),
+        "summary": diagnosis.get("summary", ""),
+        "evidence": diagnosis.get("evidence", []),
+        "recommended_actions": diagnosis.get("recommended_actions", []),
+        "prevention": diagnosis.get("prevention", []),
+    }
+
+    try:
+        table.put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(incident_id)",
+        )
+
+        logger.info("INCIDENT_SAVED=%s", json.dumps(item, default=str))
+
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code")
+
+        if error_code == "ConditionalCheckFailedException":
+            logger.info(
+                "Incident already exists, skipping duplicate: %s",
+                incident_id,
+            )
+        else:
+            raise
+
+
 def lambda_handler(event, context):
     logger.info("Incident investigation started")
 
     detail = event.get("detail", {})
+
     alarm_name = detail.get("alarmName", "unknown")
     state = detail.get("state", {})
 
@@ -123,7 +163,14 @@ def lambda_handler(event, context):
         json.dumps(diagnosis),
     )
 
+    save_incident(
+        event=event,
+        evidence=evidence,
+        diagnosis=diagnosis,
+    )
+
     return {
         "statusCode": 200,
+        "incident_id": event.get("id"),
         "diagnosis": diagnosis,
     }
