@@ -1,7 +1,10 @@
 import os
+from pathlib import Path
 
 import boto3
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from copilot.app.services.bedrock import analyze_incident
@@ -9,6 +12,8 @@ from copilot.app.services.bedrock import analyze_incident
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 TABLE_NAME = os.environ.get("INCIDENT_TABLE_NAME", "beanstalk-incidents")
+BASE_DIR = Path(__file__).resolve().parents[2]
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 table = dynamodb.Table(TABLE_NAME)
@@ -53,6 +58,8 @@ def list_incidents():
     }
 
 
+
+
 @app.get("/api/incidents/{incident_id}")
 def get_incident(incident_id: str):
     response = table.get_item(
@@ -68,3 +75,19 @@ def get_incident(incident_id: str):
         )
 
     return incident
+
+if FRONTEND_DIST.exists():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=FRONTEND_DIST / "assets"),
+        name="assets",
+    )
+
+    @app.get("/{full_path:path}")
+    def serve_frontend(full_path: str):
+        requested = FRONTEND_DIST / full_path
+
+        if full_path and requested.is_file():
+            return FileResponse(requested)
+
+        return FileResponse(FRONTEND_DIST / "index.html")
