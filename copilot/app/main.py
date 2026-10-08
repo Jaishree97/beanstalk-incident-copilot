@@ -7,12 +7,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from copilot.app.services.bedrock import analyze_incident
+from app.services.bedrock import analyze_incident
 
 
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 TABLE_NAME = os.environ.get("INCIDENT_TABLE_NAME", "beanstalk-incidents")
-BASE_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
